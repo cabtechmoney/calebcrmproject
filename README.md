@@ -16,6 +16,12 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## API configuration
+
+Set `NEXT_PUBLIC_API_URL` to the API origin and path for the Express service. For local development, use `http://localhost:5000/api`; deployments should set it to the deployed API URL. If unset, the app defaults to the local development URL.
+
+For AI analysis, configure `GEMINI_API_KEY` in the Express API environment. Optionally set `GEMINI_MODEL` to select a Gemini model; it defaults to `gemini-2.5-flash`. Restart the API after changing either setting.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -1,96 +1,106 @@
-import Link from "next/link";
-import { PageHeader, Panel } from "@/components/ui";
-import { api } from "@/lib/api";
-import type { Client } from "@/lib/types";
+'use client';
 
-export const dynamic = "force-dynamic";
+import Link from 'next/link';
+import { FormEvent, useEffect, useState } from 'react';
+import { api } from '../../lib/api';
+import type { Client } from '../../lib/types';
 
-async function getClients() {
-  try {
-    return await api<Client[]>("/clients");
-  } catch {
-    return [];
-  }
-}
+type ClientDraft = { name: string; email: string; company: string; phone: string };
+const emptyDraft: ClientDraft = { name: '', email: '', company: '', phone: '' };
 
-export default async function ClientsPage() {
-  const clients = await getClients();
-  const pipelineValue = clients.reduce(
-    (sum, client) => sum + (client.projects?.reduce((projectSum, project) => projectSum + (project.budget ?? 0), 0) ?? 0),
-    0
-  );
-  const followUps = clients.reduce(
-    (count, client) => count + (client.projects?.filter((project) => project.status && project.status !== "Completed").length ?? 0),
-    0
-  );
+export default function ClientsPage() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [draft, setDraft] = useState<ClientDraft>(emptyDraft);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadClients = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      setClients(await api<Client[]>('/clients'));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load clients.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadClients(); }, []);
+
+  const saveClient = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError('');
+    try {
+      const client = await api<Client>(editingId ? `/clients/${editingId}` : '/clients', {
+        method: editingId ? 'PUT' : 'POST',
+        body: JSON.stringify(draft),
+      });
+      setClients((current) => editingId
+        ? current.map((item) => item.id === client.id ? client : item)
+        : [client, ...current]);
+      setDraft(emptyDraft);
+      setEditingId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save client.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteClient = async (id: string) => {
+    setError('');
+    try {
+      await api<void>(`/clients/${id}`, { method: 'DELETE' });
+      setClients((current) => current.filter((client) => client.id !== id));
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete client.');
+    }
+  };
+
+  const editClient = (client: Client) => {
+    setEditingId(client.id);
+    setDraft({ name: client.name, email: client.email ?? '', company: client.company ?? '', phone: client.phone ?? '' });
+  };
 
   return (
-    <div>
-      <PageHeader
-        title="Clients"
-        description="Keep a sharp view on account health, open opportunities, and the next best action."
-        action={
-          <Link
-            href="/clients/new"
-            className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white transition hover:bg-[color:var(--accent-hover)]"
-          >
-            Add client
-          </Link>
-        }
-      />
+    <main className="page-shell">
+      <header className="page-header">
+        <div><p className="eyebrow">Clients</p><h1>Customer directory</h1></div>
+        <nav className="page-nav"><Link href="/">Overview</Link><Link href="/projects">Projects</Link></nav>
+      </header>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">Healthy accounts</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{clients.length}</p>
+      <form className="page-card mb-6 grid gap-3 sm:grid-cols-2" onSubmit={saveClient}>
+        <h2 className="sm:col-span-2">{editingId ? 'Edit client' : 'Add a client'}</h2>
+        <input aria-label="Client name" required placeholder="Full name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        <input aria-label="Email" required type="email" placeholder="Email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} />
+        <input aria-label="Company" placeholder="Company" value={draft.company} onChange={(event) => setDraft({ ...draft, company: event.target.value })} />
+        <input aria-label="Phone" placeholder="Phone" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} />
+        <div className="flex gap-2 sm:col-span-2">
+          <button className="primary-button" disabled={isSaving}>{isSaving ? 'Saving...' : editingId ? 'Save changes' : 'Add client'}</button>
+          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(emptyDraft); }}>Cancel</button>}
         </div>
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">Pipeline value</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">${pipelineValue.toLocaleString()}</p>
-        </div>
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">Open follow-ups</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{followUps}</p>
-        </div>
-      </div>
+      </form>
 
-      <Panel title="Client accounts">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-[color:var(--border)] text-left text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
-                <th className="py-3">Client</th>
-                <th className="py-3">Company</th>
-                <th className="py-3">Contact</th>
-                <th className="py-3">Projects</th>
-                <th className="py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--border)]">
-              {clients.map((client) => (
-                <tr key={client.id}>
-                  <td className="py-4 font-semibold text-[color:var(--text)]">{client.name}</td>
-                  <td className="py-4 text-[color:var(--text-muted)]">{client.company ?? "—"}</td>
-                  <td className="py-4 text-[color:var(--text-muted)]">{client.email ?? client.phone ?? "—"}</td>
-                  <td className="py-4 text-[color:var(--text-muted)]">{client.projects?.length ?? 0}</td>
-                  <td className="py-4">
-                    {client.id ? (
-                      <Link
-                        href={`/clients/${client.id}`}
-                        className="rounded-md border border-[color:var(--border)] px-3 py-1.5 text-sm font-medium text-[color:var(--text)] transition hover:bg-[color:var(--surface-alt)]"
-                      >
-                        View
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-[color:var(--text-muted)]">Missing ID</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-    </div>
+      {error && <p className="form-error mb-4" role="alert">{error} <button type="button" onClick={() => void loadClients()}>Retry</button></p>}
+      {isLoading ? <p role="status">Loading clients...</p> : clients.length === 0 ? <p className="page-card">No clients yet. Add your first client above.</p> : (
+        <section className="card-grid">
+          {clients.map((client) => (
+            <article key={client.id} className="page-card">
+              <span className="page-chip">Client</span><h3>{client.name}</h3><p>{client.company || 'No company listed'}</p>
+              <div className="meta-row"><span>{client.email || 'No email'}</span></div>
+              <div className="meta-row"><span>{client.phone || 'No phone'}</span></div>
+              <div className="mt-4 flex gap-2">
+                <button type="button" className="secondary-button" onClick={() => editClient(client)}>Edit</button>
+                <button type="button" className="danger-button" onClick={() => void deleteClient(client.id)}>Delete</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+    </main>
   );
 }

@@ -1,98 +1,112 @@
-import Link from "next/link";
-import { KanbanBoard } from "@/components/kanban-board";
-import { PageHeader, Panel } from "@/components/ui";
-import { api } from "@/lib/api";
-import type { Project } from "@/lib/types";
+'use client';
 
-export const dynamic = "force-dynamic";
+import Link from 'next/link';
+import { FormEvent, useEffect, useState } from 'react';
+import { api } from '../../lib/api';
+import type { Project } from '../../lib/types';
 
-async function getProjects() {
-  try {
-    return await api<Project[]>("/projects");
-  } catch {
-    return [];
-  }
-}
+type ProjectDraft = { title: string; description: string; budget: string; status: string; deadline: string };
+const emptyDraft: ProjectDraft = { title: '', description: '', budget: '', status: 'Planning', deadline: '' };
 
-export default async function ProjectsPage() {
-  const projects = await getProjects();
-  const inFlightCount = projects.filter((project) => project.status && project.status !== "Completed").length;
-  const budgetTotal = projects.reduce((sum, project) => sum + (project.budget ?? 0), 0);
-  const riskCount = projects.filter((project) => project.status === "At risk" || project.status === "Delayed").length;
+export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [draft, setDraft] = useState<ProjectDraft>(emptyDraft);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadProjects = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      setProjects(await api<Project[]>('/projects'));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load projects.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadProjects(); }, []);
+
+  const saveProject = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError('');
+    const payload = { ...draft, budget: draft.budget ? Number(draft.budget) : null, deadline: draft.deadline || null };
+    try {
+      const project = await api<Project>(editingId ? `/projects/${editingId}` : '/projects', {
+        method: editingId ? 'PUT' : 'POST', body: JSON.stringify(payload),
+      });
+      setProjects((current) => editingId
+        ? current.map((item) => item.id === project.id ? project : item)
+        : [project, ...current]);
+      setDraft(emptyDraft);
+      setEditingId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save project.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const editProject = (project: Project) => {
+    setEditingId(project.id);
+    setDraft({ title: project.title, description: project.description ?? '', budget: project.budget?.toString() ?? '', status: project.status ?? 'Planning', deadline: project.deadline?.slice(0, 10) ?? '' });
+  };
+
+  const deleteProject = async (id: string) => {
+    setError('');
+    try {
+      await api<void>(`/projects/${id}`, { method: 'DELETE' });
+      setProjects((current) => current.filter((project) => project.id !== id));
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete project.');
+    }
+  };
 
   return (
-    <div>
-      <PageHeader
-        title="Projects"
-        description="Monitor delivery status, budgets, and client commitments."
-        action={
-          <Link
-            href="/projects/new"
-            className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-hover)]"
-          >
-            New project
-          </Link>
-        }
-      />
+    <main className="page-shell">
+      <header className="page-header">
+        <div><p className="eyebrow">Projects</p><h1>Delivery pipeline</h1></div>
+        <nav className="page-nav">
+          <Link href="/">Overview</Link>
+          <Link href="/clients">Clients</Link>
+          <Link href="/projects/new">New project</Link>
+        </nav>
+      </header>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">In flight</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{inFlightCount}</p>
+      <form className="page-card mb-6 grid gap-3 sm:grid-cols-2" onSubmit={saveProject}>
+        <h2 className="sm:col-span-2">{editingId ? 'Edit project' : 'Quick project update'}</h2>
+        <input required aria-label="Project title" placeholder="Project title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+        <input type="number" min="0" aria-label="Budget" placeholder="Budget" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} />
+        <input aria-label="Status" placeholder="Status" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} />
+        <input type="date" aria-label="Deadline" value={draft.deadline} onChange={(event) => setDraft({ ...draft, deadline: event.target.value })} />
+        <textarea className="sm:col-span-2" aria-label="Description" placeholder="Description" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+        <div className="flex gap-2 sm:col-span-2">
+          <button className="primary-button" disabled={isSaving}>{isSaving ? 'Saving...' : editingId ? 'Save changes' : 'Update project'}</button>
+          {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setDraft(emptyDraft); }}>Cancel</button>}
         </div>
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">Budget tracked</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">${budgetTotal.toLocaleString()}</p>
-        </div>
-        <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 shadow-sm">
-          <p className="text-sm text-[color:var(--text-muted)]">Milestones at risk</p>
-          <p className="mt-2 text-2xl font-semibold text-[color:var(--text)]">{riskCount}</p>
-        </div>
-      </div>
+      </form>
 
-      <Panel title="Active Work">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-[color:var(--border)] text-left text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
-                <th className="pb-3">Title</th>
-                <th className="pb-3">Client</th>
-                <th className="pb-3">Budget</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[color:var(--border)]">
-              {projects.map((project) => (
-                <tr key={project.id}>
-                  <td className="py-4 font-medium text-[color:var(--text)]">{project.title}</td>
-                  <td className="py-4 text-[color:var(--text-muted)]">{project.client?.name ?? "Unassigned"}</td>
-                  <td className="py-4 text-[color:var(--text-muted)]">
-                    {project.budget ? `$${project.budget.toLocaleString()}` : "—"}
-                  </td>
-                  <td className="py-4 text-[color:var(--text-muted)]">{project.status ?? "Pending"}</td>
-                  <td className="py-4">
-                    {project.id ? (
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="rounded-md border border-[color:var(--border)] px-3 py-1.5 text-sm font-medium text-[color:var(--text)] transition hover:bg-[color:var(--surface-alt)]"
-                      >
-                        View
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-[color:var(--text-muted)]">Missing ID</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Panel title="Kanban Board" className="mt-6">
-        <KanbanBoard />
-      </Panel>
-    </div>
+      {error && <p className="form-error mb-4" role="alert">{error} <button type="button" onClick={() => void loadProjects()}>Retry</button></p>}
+      {isLoading ? <p role="status">Loading projects...</p> : projects.length === 0 ? <p className="page-card">No projects yet. Create a project to start your pipeline.</p> : (
+        <section className="card-grid">
+          {projects.map((project) => (
+            <article key={project.id} className="page-card">
+              <span className="page-chip">{project.status || 'New'}</span>
+              <h3><Link href={`/projects/${project.id}`}>{project.title || 'Untitled project'}</Link></h3>
+              <p>{project.description || 'No description yet.'}</p>
+              <div className="meta-row"><span>{project.deadline || 'No deadline'}</span><strong>{project.budget ? `$${project.budget.toLocaleString()}` : '$0'}</strong></div>
+              <div className="mt-4 flex gap-2">
+                <button type="button" className="secondary-button" onClick={() => editProject(project)}>Edit</button>
+                <button type="button" className="danger-button" onClick={() => void deleteProject(project.id)}>Delete</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+    </main>
   );
 }

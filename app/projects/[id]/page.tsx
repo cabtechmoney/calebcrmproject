@@ -1,36 +1,41 @@
+"use client";
+
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { PageHeader, Panel, StatCard } from "@/components/ui";
 import { api } from "@/lib/api";
 import type { Project } from "@/lib/types";
-export const dynamic = "force-dynamic";
-type ProjectDetailPageProps = {
-  params: Promise<{ id: string }>;
-};
 
-async function getProject(id: string): Promise<Project | null> {
-  if (!id || id === "undefined") return null;
+export default function ProjectDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const [project, setProject] = useState<Project | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
-  try {
-    return await api<Project>(`/projects/${id}`);
-  } catch {
-    return null;
-  }
-}
+  useEffect(() => {
+    setIsLoading(true);
+    setError("");
+    api<Project>(`/projects/${id}`)
+      .then(setProject)
+      .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Could not load project."))
+      .finally(() => setIsLoading(false));
+  }, [attempt, id]);
 
-export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  const { id } = await params;
-  const project = await getProject(id);
+  if (isLoading) return <p className="p-6" role="status">Loading project...</p>;
 
   if (!project) {
     return (
       <div>
         <PageHeader
-          title="Project not found"
-          description="The requested project could not be loaded. If the database has not been set up yet, apply the schema in Supabase and try again."
+          title={error ? "Project unavailable" : "Project not found"}
+          description={error || "The requested project could not be found."}
           action={
-            <Link href="/projects" className="inline-flex h-10 items-center rounded-md border border-[color:var(--border)] px-4 text-sm font-semibold text-[color:var(--text)] hover:bg-[color:var(--surface-alt)]">
-              Back to projects
-            </Link>
+            <div className="flex gap-2">
+              {error && <button type="button" onClick={() => setAttempt((current) => current + 1)} className="inline-flex h-10 items-center rounded-md border border-[color:var(--border)] px-4 text-sm font-semibold text-[color:var(--text)] hover:bg-[color:var(--surface-alt)]">Retry</button>}
+              <Link href="/projects" className="inline-flex h-10 items-center rounded-md border border-[color:var(--border)] px-4 text-sm font-semibold text-[color:var(--text)] hover:bg-[color:var(--surface-alt)]">Back to projects</Link>
+            </div>
           }
         />
       </div>
@@ -51,6 +56,8 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           </Link>
         }
       />
+
+      {error && <p className="form-error mb-4" role="alert">{error}</p>}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Client" value={project.client?.name ?? "Unassigned"} trend={project.clientId ? "Connected" : "Missing"} tone="slate" />

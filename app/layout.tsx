@@ -1,25 +1,16 @@
-import type { Metadata } from "next";
-import { AppShell } from "@/components/app-shell";
-import "./globals.css";
+import './globals.css';
+import type { Metadata } from 'next';
+import { AuthGate } from '../components/auth/AuthGate';
 
 export const metadata: Metadata = {
-  title: "Caleb CRM",
-  description: "Professional CRM MVP for managing clients, projects, invoices, and revenue.",
+  title: 'Caleb CRM',
+  description: 'Customer relationship dashboard',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className="h-full antialiased"
-    >
-      <body className="min-h-full">
-        <AppShell>{children}</AppShell>
-      </body>
+    <html lang="en">
+      <body><AuthGate>{children}</AuthGate></body>
     </html>
   );
 }

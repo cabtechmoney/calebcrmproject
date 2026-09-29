@@ -2,42 +2,36 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { api } from '../../lib/api';
 
-type LoginResponse = { token: string; user?: Record<string, unknown> };
-
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      router.replace('/dashboard');
-    }
-  }, [router]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const data = await api<LoginResponse>('/auth/login', {
+      await api('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ name, email, password }),
       });
 
-      localStorage.setItem('token', data.token);
-      if (data.user) {
-        localStorage.setItem('crm-user', JSON.stringify(data.user));
-      }
-
-      router.push('/dashboard');
+      router.push('/login');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Something went wrong.');
     } finally {
@@ -51,16 +45,28 @@ export default function LoginPage() {
         <div className="auth-header">
           <div className="brand-mark">C</div>
           <div>
-            <p className="eyebrow">Welcome back</p>
-            <h1>Sign in</h1>
+            <p className="eyebrow">Create account</p>
+            <h1>Get started</h1>
           </div>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="form-field">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="name">Full name</label>
             <input
-              id="email"
+              id="name"
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Caleb Johnson"
+              required
+            />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="register-email">Email</label>
+            <input
+              id="register-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -70,9 +76,9 @@ export default function LoginPage() {
           </div>
 
           <div className="form-field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="register-password">Password</label>
             <input
-              id="password"
+              id="register-password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -81,15 +87,27 @@ export default function LoginPage() {
             />
           </div>
 
+          <div className="form-field">
+            <label htmlFor="confirm-password">Confirm password</label>
+            <input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
           {error ? <p className="form-error">{error}</p> : null}
 
           <button type="submit" className="primary-button auth-button" disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in...' : 'Sign in'}
+            {isSubmitting ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 
         <p className="auth-links">
-          Need an account? <Link href="/register">Create one</Link>
+          Already have an account? <Link href="/login">Sign in</Link>
         </p>
       </div>
     </main>
